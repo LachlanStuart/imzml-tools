@@ -46,6 +46,14 @@ def tol_edges(mzs, tol_ppm=DEFAULT_TOL_PPM, tolerance_scaling=DEFAULT_TOL_MODE, 
     return mzs - half_width, mzs + half_width
 
 
+def safeParseSumFormula(formula):
+    """Wrapper for parseSumFormula to catch exceptions"""
+    try:
+        return str(parseSumFormula(formula))
+    except Exception:
+        return None
+
+
 def load_db(db_path, default_adducts=DEFAULT_ADDUCTS, default_charge=DEFAULT_CHARGE):
     """Loads a database CSV or TSV file, applys default adducts and a charge if no adducts/charge
      are specified in the file"""
@@ -62,7 +70,7 @@ def load_db(db_path, default_adducts=DEFAULT_ADDUCTS, default_charge=DEFAULT_CHA
         db = db.assign(charge=default_charge)
 
     db['ion_formula'] = [
-        str(parseSumFormula(formula + adduct))
+        safeParseSumFormula(formula + adduct)
         for formula, adduct in db[['formula', 'adduct']].itertuples(False, None)
     ]
 
@@ -70,7 +78,12 @@ def load_db(db_path, default_adducts=DEFAULT_ADDUCTS, default_charge=DEFAULT_CHA
 
 
 def calculate_centroids(db, n_peaks=1, min_abundance=0, analyzer=DEFAULT_ANALYZER, rp=DEFAULT_RP, base_mz=DEFAULT_BASE_MZ):
-    """For """
+    """Calculates the isotopic peak centroids for items in the supplied database.
+    Database rows should have 'ion_formula' and 'charge' columns.
+    If n_peaks > 1, multiple rows per ion_formula/charge will be returned.
+    If an ion formula creates an invalid molecule (e.g. H2O-Cl), it will be
+
+    """
     assert analyzer in ANALYZERS
     assert 'ion_formula' in db.columns, 'db must have ion_formula and charge columns'
     assert 'charge' in db.columns, 'db must have ion_formula and charge columns'
@@ -80,6 +93,8 @@ def calculate_centroids(db, n_peaks=1, min_abundance=0, analyzer=DEFAULT_ANALYZE
     results = []
 
     for ion_formula, charge in db[['ion_formula', 'charge']].drop_duplicates().itertuples(False, None):
+        if not ion_formula or not charge:
+            continue
         try:
             iso_pattern = cpyMSpec.isotopePattern(ion_formula)
             iso_pattern.addCharge(charge)
