@@ -103,18 +103,40 @@ def extract_peaks(
     tol_mode=DEFAULT_TOL_MODE,
     base_mz=DEFAULT_BASE_MZ,
 ):
+    """
+    Extract all peaks from the given imzML file for the supplied database of molecules.
+    :param imzml_path:
+    :param db: A pandas DataFrame containing an 'mz' column. Additional metadata columns are also allowed.
+    :param tol_ppm:
+        The maximum distance from a theoretical m/z to search for peaks. e.g. 3 means +/- 3ppm
+    :param tol_mode:
+        The model for adjusting tol_ppm based on the area of the mass range.
+        To match METASPACE, specify 'tof', which means 1ppm is always mz * 1e-6 (i.e. 1ppm at every mass)
+        See the `ppm_to_daltons` function for more examples.
+    :param base_mz:
+        The base m/z for tolerance calculations. Doesn't matter with 'tof'.
+        See the `ppm_to_daltons` function for more details.
+    :return:
+        coords_df - a DataFrame mapping spectrum idx to x,y values.
+            Needed for converting 'peaks_df' values to images
+        peaks - A list of dicts. Each dict contains:
+            'mol': A NamedTuple of the DB peak row. Access fields with e.g. peak['mol'].formula
+            'peaks_df': a DataFrame with one row per found peak. Columns:
+                'sp': Spectrum idx
+                'mz': m/z
+                'ints': Intensity value
+    """
+    assert 'mz' in db.columns, 'db must have an "mz" column'
+    assert tol_mode in TOL_MODES, f'invalid tol_mode: {tol_mode}'
     p = ImzMLParser(str(imzml_path))
     coords_df = pd.DataFrame(p.coordinates, columns=['x', 'y', 'z'][:len(p.coordinates[0])], dtype='i')
     coords_df['x'] -= np.min(coords_df.x)
     coords_df['y'] -= np.min(coords_df.y)
-    w, h = np.max(coords_df.x) + 1, np.max(coords_df.y) + 1
 
     mz_tol_lo, mz_tol_hi = tol_edges(db.mz, tol_ppm, tol_mode, base_mz)
     # Uncomment this to add the tolerance boundaries to db for debugging:
     # db['mz_tol_lo'], db['mz_tol_hi'] = mz_tol_lo, mz_tol_hi
 
-    # mz_images = [np.full((w, h), np.nan, dtype='f') for sp in range(len(coords_df))]
-    # ints_images = [np.zeros((w, h), dtype='f') for sp in range(len(coords_df))]
     mol_peaks = [[] for sp in range(len(coords_df))]
 
     for sp, x, y in coords_df[['x', 'y']].itertuples(True, None):
@@ -123,16 +145,8 @@ def extract_peaks(
         mz_range_hi = np.searchsorted(mzs, mz_tol_hi, 'right')
         mask = mz_range_lo != mz_range_hi
         for peak, idx_lo, idx_hi in zip(np.flatnonzero(mask), mz_range_lo[mask], mz_range_hi[mask]):
-            if idx_lo + 1 == idx_hi:
-                # Fast path - only one peak. Use it as-is.
-                # mz_images[peak][x, y] = mzs[idx_lo]
-                # ints_images[peak][x, y] = ints[idx_lo]
-                mol_peaks[peak].append((sp, mzs[idx_lo], ints[idx_lo]))
-            else:
-                # Slow path - multiple peaks. Merge them for images, loop through them for df
-                # mz_images[peak][x, y] = np.average(mzs[idx_lo:idx_hi], weights=ints[idx_lo:idx_hi])
-                # ints_images[peak][x, y] = np.sum(ints[idx_lo:idx_hi])
-                mol_peaks[peak].extend((sp, mzs[i], ints[i]) for i in range(idx_lo, idx_hi))
+            for i in range(idx_lo, idx_hi):
+                mol_peaks[peak].append((sp, mzs[i], ints[i]))
 
     empty_peaks_df = pd.DataFrame({
         'sp': pd.Series(dtype='i'),
@@ -230,8 +244,8 @@ def search_imzml_for_database_peaks(
     :return: Returns 3 items:
         db - The DB loaded from CSV/TSV, with adducts/charge applied. If multiple adducts,
             or n_peaks > 1 is specified, there will be multiple rows per input formula.
-        coords_df - a DataFrame mapping spectrum idx to x,y values. Needed for converting 'peaks_df'
-            values to images
+        coords_df - a DataFrame mapping spectrum idx to x,y values.
+            Needed for converting 'peaks_df' values to images
         peaks - A list of dicts. Each dict contains:
             'mol': A NamedTuple of the DB peak row. Access fields with e.g. peak['mol'].formula
             'peaks_df': a DataFrame with one row per found peak. Columns:
