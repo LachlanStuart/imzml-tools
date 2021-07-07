@@ -5,7 +5,6 @@ from pyimzml.ImzMLParser import ImzMLParser
 from pyimzml.ImzMLWriter import ImzMLWriter
 
 
-
 def parse_args():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('input', help='input imzML file')
@@ -51,6 +50,38 @@ def split_imzml_file(in_file, keep_coords):
             for coord in region_coords:
                 mzs, ints = imzml_parser.getspectrum(coord_to_idx[tuple(coord)])
                 writer.addSpectrum(mzs, ints, coord + offset)
+
+    # Plot the layout to an image file
+    save_layout_image(in_file.replace('.imzML', '_layout.png'), region_labels, num_regions)
+
+
+def save_layout_image(out_file, region_labels, num_regions):
+    import matplotlib.pyplot as plt
+    width, height = region_labels.shape[:2]
+    fig: plt.Figure = plt.figure(figsize=(width / 100 + 0.5, height / 100 + 0.5))
+    ax: plt.Axes = fig.gca()
+    ax.invert_yaxis()  # Make 0,0 the top-left
+    ax.xaxis.tick_top()  # Put X axis labels on top to match
+
+    # Make colorizable image of regions
+    region_image = np.float32(region_labels[:, :, -1])
+    region_image[region_image == 0] = np.nan
+    region_image = (region_image - 1) / (num_regions - 1)
+    print(np.nanmax(region_image), num_regions)
+    ax.imshow(region_image.T, cmap=plt.cm.gist_ncar)
+
+    # Add a label to each region
+    for i in range(num_regions):
+        region_coords = np.argwhere(region_labels == i + 1)
+        mid_x, mid_y = np.mean(region_coords, axis=0)[:2].astype('i')
+        ax.annotate(
+            f'{mid_x}_{mid_y}', (mid_x, mid_y),
+            ha='center', va='center',
+            bbox={'boxstyle': 'square', 'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.75},
+        )
+    fig.tight_layout()
+    fig.savefig(out_file)
+    plt.close(fig)
 
 
 if __name__ == '__main__':
