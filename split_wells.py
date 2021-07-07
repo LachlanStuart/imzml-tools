@@ -58,7 +58,7 @@ def split_imzml_file(in_file, keep_coords):
 def save_layout_image(out_file, region_labels, num_regions):
     import matplotlib.pyplot as plt
     width, height = region_labels.shape[:2]
-    fig: plt.Figure = plt.figure(figsize=(width / 100 + 0.5, height / 100 + 0.5))
+    fig: plt.Figure = plt.figure(figsize=(max(width / 100 + 0.5, 5), max(height / 100 + 0.5, 5)))
     ax: plt.Axes = fig.gca()
     ax.invert_yaxis()  # Make 0,0 the top-left
     ax.xaxis.tick_top()  # Put X axis labels on top to match
