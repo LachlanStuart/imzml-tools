@@ -25,6 +25,7 @@ def parse_args():
 def split_imzml_file(in_file, keep_coords):
     # Open original file
     imzml_parser = ImzMLParser(in_file)
+    assert hasattr(imzml_parser, 'polarity'), 'Old version of pyimzml - please run "pip install -U pyimzml"'
     coords = np.array(imzml_parser.coordinates)
     coord_to_idx = {tuple(c): i for i, c in enumerate(coords)}
 
@@ -42,7 +43,7 @@ def split_imzml_file(in_file, keep_coords):
         out_file = in_file.replace('.imzML', f'_{mid_x}_{mid_y}.imzML')
         print(f'Writing {len(region_coords)} spectra to {out_file}')
 
-        with ImzMLWriter(out_file) as writer:
+        with ImzMLWriter(out_file, polarity=imzml_parser.polarity) as writer:
             offset = (1 - np.min(region_coords, axis=0))
             if keep_coords:
                 offset = np.zeros_like(offset)
